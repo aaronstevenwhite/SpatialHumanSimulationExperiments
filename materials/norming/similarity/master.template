@@ -1,0 +1,80 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0063)http://spellout.net/ibexexps/aaronsteven/wander/experiment.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <script>
+    $staticjs
+    </script>    
+
+    <style type="text/css">
+    .endMessage {
+       padding-top: 1em;
+    padding-bottom: 1em;
+    padding-left: 2em;
+    padding-right: 2em;
+    margin-left: auto;
+    margin-right: auto;
+    cursor: pointer;
+    font-family: sans-serif;
+    font-weight: bold;
+    display: inline;
+    }
+
+    .hidden {
+      display: none;
+    }
+        
+    </style>
+    <!-- Data file JS includes. -->
+    <script>
+    $items
+    </script>
+    <!-- Set up configuration variables. -->
+    <script>
+    $conf
+    </script>
+
+    <!-- The main body of JS code. -->
+    <script>
+    $mainjs
+    </script>
+
+    <!-- data -->
+    <script>
+    $instructions
+    </script>
+
+    <style>
+    $css
+    </style>
+
+    <!-- To be reset by JavaScript. -->
+        <title>Experiment</title>
+        <script type="text/javascript">
+        <!--
+        document.title = conf_pageTitle;
+        -->
+        </script>
+</head>
+<body id="bod">
+
+       <input class="hidden" id="responses" name="responses" value=""/>
+    	<div class="hidden" id="submitButtonDiv">
+    	Please click below to submit your answers. Thanks for your participation.
+       <input type="submit" id="theSubmitButton" name="Finished" value="Submit" autocomplete="off" onClick="finished()"/>
+    	</div>
+        <div class="hidden" id="finishedMessageDiv">
+        Your HIT has been submitted.
+    	</div>
+    </form>
+
+
+    <script type="text/javascript">
+    <!--
+    -->
+    </script>
+    <noscript>
+    <p>You need to have Javascript enabled in order to use this page.</p>
+    </noscript>
+</body>
+</html>
