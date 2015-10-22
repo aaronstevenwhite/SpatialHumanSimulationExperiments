@@ -1,0 +1,441 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+# Preliminaries
+
+```{r}
+## load packages
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(lme4)
+
+## set plotting theme
+theme_set(theme_bw())
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+
+## set the random seed
+set.seed(465)
+
+## set high-level directories
+root.dir <- '~/experiments/SpatialHumanSimulation'
+analysis.dir <- file.path(root.dir, 'analysis')
+data.dir <- file.path(root.dir, 'data')
+plots.dir <- file.path(analysis.dir, 'plots')
+
+## set norming directories
+data.norming.dir <- file.path(data.dir, 'norming')
+data.norming.humsim.dir <- file.path(data.norming.dir, 'human_simulation')
+data.norming.simil.dir <- file.path(data.norming.dir, 'similarity')
+
+## set learning directory
+data.learning.dir <- file.path(data.dir, 'learning')
+
+## loading norming data
+data.norming.humsim <- read.delim(file.path(data.norming.humsim.dir,
+                                  'results.preprocessed'))
+data.norming.simil <- read.csv(file.path(data.norming.simil.dir,
+                               'results.preprocessed'))
+
+## loading learning data
+```
+
+
+# Data validation
+
+Before we begin, it will be useful to define functions that return the Tukey bounds of a column.
+
+```{r}
+tukey.low <- function(col){
+  q1 <- quantile(col, .25)
+  iqr15 <- 1.5*IQR(col)
+  
+  q1 - iqr15
+}
+
+tukey.high <- function(col){
+  q3 <- quantile(col, .75)
+  iqr15 <- 1.5*IQR(col)
+  
+  q3 + iqr15
+}
+```
+
+## Human simulation norming data
+
+```{r}
+## filter by question accuracy
+question.accuracy <- summarise(group_by(data.norming.humsim, id), 
+                               qsum=sum(questionaccuracy, 
+                                        na.rm=TRUE)/(n()/40))
+question.accuracy.filtered <- filter(question.accuracy, qsum >= 8)
+data.norming.humsim.filtered <- filter(data.norming.humsim, 
+                                       id %in% question.accuracy.filtered$id)
+
+## filter by reaction time
+data.norming.humsim.stats <- summarise(group_by(data.norming.humsim.filtered, id), 
+                               medlogrt=median(log(responseRT)),
+                               iqrlogrt=IQR(log(responseRT)),
+                               logrt25=quantile(log(responseRT), .25), 
+                               logrt75=quantile(log(responseRT), .75), 
+                               lowlogrt=logrt25-1.5*IQR(log(responseRT)))
+
+data.norming.humsim.filtered <- mutate(group_by(data.norming.humsim.filtered, id), 
+                           medlogrt=median(log(responseRT)),
+                           iqrlogrt=IQR(log(responseRT)),
+                           logrt25=quantile(log(responseRT), .25), 
+                           logrt75=quantile(log(responseRT), .75), 
+                           lowlogrt=logrt25-1.5*IQR(log(responseRT)))
+
+data.norming.humsim.filtered <- droplevels(filter(data.norming.humsim.filtered, medlogrt > quantile(data.norming.humsim.stats$medlogrt, .25) - 1.5*IQR(data.norming.humsim.stats$medlogrt)))
+data.norming.humsim.filtered <- droplevels(filter(data.norming.humsim.filtered, iqrlogrt > quantile(data.norming.humsim.stats$iqrlogrt, .25) - 1.5*IQR(data.norming.humsim.stats$iqrlogrt)))
+data.norming.humsim.filtered <- filter(data.norming.humsim.filtered, log(responseRT) > lowlogrt)
+
+## find responses that are not attested words
+## (nonattested words will have an NA for responsewordfreq)
+data.nonwords <- filter(data.norming.humsim.filtered, is.na(responsewordfreq))
+
+correct.spelling <- function(data.norming.humsim.filtered, incorrect, correct, replaceresponsewordfreq=NA){
+  if(is.na(replaceresponsewordfreq)){
+    data.norming.humsim.filtered[data.norming.humsim.filtered$response==incorrect,]$responsewordfreq <- as.numeric(filter(data.norming.humsim.filtered, response==correct)[1,'responsewordfreq'])
+  } else {
+    data.norming.humsim.filtered[data.norming.humsim.filtered$response==incorrect,]$responsewordfreq <- as.numeric(replaceresponsewordfreq)
+  }
+  
+  data.norming.humsim.filtered[data.norming.humsim.filtered$response==incorrect,]$response <- correct
+  
+  return(data.norming.humsim.filtered)
+}
+
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "think'", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thwink", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "knkow", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "knokw", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "knlw", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "want?", "want")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "wisj", "wish")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "needf", "needs")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "saww", "saw")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "boughy", "bought")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "gavd", "gave")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "carae", "care")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "exxpect", "expect")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "love's", "loves")
+
+data.nonwords.postcorrection <- filter(data.norming.humsim.filtered, is.na(responsewordfreq))
+
+data.norming.humsim.filtered <- droplevels(filter(data.norming.humsim.filtered, !is.na(responsewordfreq)))
+
+## exclude hand-coded nonwords
+nonwords <- c("bac", "boun", "blorp", "bomp", "cant", "conjurs", "couldn't", 
+              "dees", "didn", "dg", "dp", "dont", "don't", "dreed", "effin", 
+              "ellaborate", "excell", "gange", "gare", "gee", "geeze", "gimme", "gope", "gosh",
+              "haunch", "ho", "isn't", "it's", "ken", "magu", "morf", "orked", "plumm", "practic", "scunt", "smag", 
+              "sara", "scunt", "slove", "smag", "smark", "spang", "spaz", "steve", "sue", "spiff", "swoom", "tammy", "thats", "theth", 
+              "thow", "thwap", "tole", "wat", "wazoo", "weet", "wh", "wont", "wouldn't", "fleep", "flomp", "spered")
+data.norming.humsim.filtered <- droplevels(filter(data.norming.humsim.filtered, !(response %in% nonwords)))
+
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "anymroe", "anymore")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "becuase", "because")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "bellieve", "believe")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "did.", "did")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "doiong", "doing")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "droing", "doing")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "fil", "fill")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "forgt", "forget")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "giv", "give")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "gte", "get")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "haave", "have")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "heared", "heard")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "kno", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "kniw", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "knwo", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "kow", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "konw", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "likr", "like")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "lke", "like")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "lnow", "know")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "mena", "mean")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "sa", "saw")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "saie", "said")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "smike", "smile")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "sleep.", "sleep")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "sned", "send")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "takl", "talk")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "tallk", "talk")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "tel", "tell")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "tel.", "tell")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "tels", "tells")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thikn", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thinki", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thinkk", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thibk", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thionk", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thihnk", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thinl", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thinik", "think")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thought4", "thought")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "thouht", "thought")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "wanr", "want")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "wnat", "want")
+data.norming.humsim.filtered <- correct.spelling(data.norming.humsim.filtered, "won.", "won")
+
+data.norming.humsim.filtered <- droplevels(data.norming.humsim.filtered)
+
+responselemmas <- read.csv(file.path(data.norming.humsim.dir, 'responselemmas'), sep=";")
+
+data.norming.humsim.filtered <- merge(data.norming.humsim.filtered, responselemmas)
+
+cols.keep <- c('id', 'verb', 'context', 'lexical', 'item', 'responselemma', 
+               'responseaccuracy', 'truewordfreq', 'responsewordfreq', 'responseRT')
+data.norming.humsim.filtered <- data.norming.humsim.filtered[cols.keep]
+
+```
+
+```{r, echo=FALSE}
+#write.csv2(data.frame(response=unique(filter(data.norming.humsim.filtered, is.na(responselemma))$response), responselemma=unique(filter(data.norming.humsim.filtered, is.na(responselemma))$response)),
+#           file='/home/aaronsteven/experiments/HumanSimulation/analysis/norming/responselemmas',
+#           row.names=FALSE,
+#           quote=FALSE)
+```
+
+## Similarity norming data
+
+```{r}
+data.norming.simil <- group_by(data.norming.simil, id) %>%              
+                      mutate(medlogrt=median(log(rt)),
+                             iqrlogrt=IQR(log(rt)),
+                             logrt25=quantile(log(rt), .25), 
+                             logrt75=quantile(log(rt), .75), 
+                             lowlogrt=logrt25-1.5*iqrlogrt)
+
+data.norming.simil.filtered <- filter(data.norming.simil, 
+                                      medlogrt > tukey.low(data.norming.simil$medlogrt),
+                                      iqrlogrt > tukey.low(data.norming.simil$iqrlogrt),
+                                      #iqrlogrt < tukey.high(data.norming.simil$iqrlogrt),
+                                      log(rt) > lowlogrt)
+
+cols.keep <- c('id','verb0','verb1','rating','rt')
+data.norming.simil.filtered <- data.norming.simil.filtered[cols.keep]
+```
+
+```{r, echo=FALSE}
+write.csv2(data.norming.simil.filtered,
+           file=file.path(data.norming.simil.dir, 'results.filtered'),
+           row.names=FALSE,
+           quote=FALSE)
+```
+
+## Learning data
+
+```{r}
+## load data
+memory.learning <- read.csv(file.path(data.learning.dir, 
+                                      'memory.preprocessed'))
+data.learning <- read.csv(file.path(data.learning.dir, 
+                                    'results.preprocessed'))
+
+## filter by memory task
+memory.learning$informativity <- relevel(memory.learning$informativity, 'low')
+memory.learning$trainingsize <- relevel(memory.learning$trainingsize, 'small')
+
+m.memory <- glmer(accuracy ~ lexical*informativity*trainingsize + (1|id) + (1|verb), family="binomial", data=memory.learning)
+m.memory.twoway <- glmer(accuracy ~ (lexical+informativity+trainingsize)^2 + (1|id) + (1|verb), family="binomial", data=memory.learning)
+
+anova(m.memory, m.memory.twoway)
+
+blups <- ranef(m.memory)$id
+names(blups) <- 'intercept'
+blups$id <- rownames(blups)
+
+good.memory <- filter(blups, intercept > mean(blups$intercept)-2*sqrt(var(blups$intercept)))
+good.memory.ids <- unique(good.memory$id)
+
+data.learning.filtered <- filter(data.learning, id %in% good.memory.ids)
+
+## filter by RTs
+data.learning.filtered <- filter(data.learning.filtered, rt > 0)
+
+## remove fast responders
+data.learning.filtered <- mutate(group_by(data.learning.filtered, id), 
+                        medlogrt=median(log(rt)),
+                        iqrlogrt=IQR(log(rt)),
+                        logrt25=quantile(log(rt), .25), 
+                        logrt75=quantile(log(rt), .75), 
+                        lowlogrt=logrt25-1.5*iqrlogrt)
+
+bad.responders.med <- filter(data.learning.filtered, medlogrt < quantile(data.learning.filtered$medlogrt, .25) - 1.5*IQR(data.learning.filtered$medlogrt))
+bad.responders.iqr <- filter(data.learning.filtered, iqrlogrt < quantile(data.learning.filtered$iqrlogrt, .25) - 1.5*IQR(data.learning.filtered$iqrlogrt) | iqrlogrt > quantile(data.learning.filtered$iqrlogrt, .75) + 1.5*IQR(data.learning.filtered$iqrlogrt))
+bad.responses <- filter(data.learning.filtered, log(rt) < lowlogrt)
+
+data.learning.filtered <- filter(data.learning.filtered, medlogrt > quantile(data.learning.filtered$medlogrt, .25) - 1.5*IQR(data.learning.filtered$medlogrt))
+data.learning.filtered <- filter(data.learning.filtered, iqrlogrt > quantile(data.learning.filtered$iqrlogrt, .25) - 1.5*IQR(data.learning.filtered$iqrlogrt), iqrlogrt < quantile(data.learning.filtered$iqrlogrt, .75) + 1.5*IQR(data.learning.filtered$iqrlogrt))
+data.learning.filtered <- filter(data.learning.filtered, log(rt) > lowlogrt)
+
+data.learning.filtered <- droplevels(data.learning.filtered[names(data.learning.filtered)[1:11]])
+
+data.learning.filtered$idunique <- paste(data.learning.filtered$id, data.learning.filtered$verb, data.learning.filtered$context, data.learning.filtered$lexical, data.learning.filtered$informativity, data.learning.filtered$trainingsize, sep='')
+```
+
+
+```{r, echo=FALSE}
+write.csv2(data.learning.filtered[c(12,2:11)],
+           file=file.path(data.learning.dir, 'results.filtered'),
+           row.names=FALSE,
+           quote=FALSE)
+```
+
+# Norming analyses
+
+## Accuracy analysis
+
+```{r}
+mean.accuracy <- data.norming.humsim.filtered %>%
+  group_by(lexical, context, verb, item) %>%
+  summarise (meanacc=mean(responseaccuracy))
+
+mean.mean.accuracy <- summarise(group_by(mean.accuracy, verb), meanmeanacc=mean(meanacc))
+mean.accuracy$verb.ordered <- ordered(mean.accuracy$verb, levels=mean.mean.accuracy[order(-mean.mean.accuracy$meanmeanacc),]$verb)
+
+p.accuracy <- ggplot(mean.accuracy, aes(x=verb.ordered, y=meanacc, fill=lexical)) + geom_boxplot() + scale_fill_grey(name='Lexical context', start = .3, end=.7) + facet_grid(context~.) + scale_x_discrete(name='') + scale_y_continuous(name='Accuracy') + theme(legend.justification=c(1,0), legend.position=c(1,.75), legend.background=element_rect(color="black"))
+```
+
+```{r, echo=FALSE}
+ggsave(file.path(plots.dir, 'humsimnormingaccuracy.png'), p.accuracy, width=16, height=9)
+#tikz(paste(plots.dir, 'humsimnormingaccuracy.tikz', sep=''), width=6, height=4)
+#p.accuracy
+#dev.off()
+```
+
+```{r}
+data.norming.humsim.filtered$lexicalcontext <- paste(data.norming.humsim.filtered$lexical, data.norming.humsim.filtered$context, sep='')
+
+## same as nested (1|verb/item) = (1|verb) + (1|item:verb)
+## But this equals (1|item) + (1|verb) since items are already unique to verbs
+m.accuracy <- glmer(responseaccuracy ~ lexical*context + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.nointer <- glmer(responseaccuracy ~ lexical+context + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly <- glmer(responseaccuracy ~ lexical + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.contextonly <- glmer(responseaccuracy ~ context + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+
+anova(m.accuracy, m.accuracy.nointer, m.accuracy.lexicalonly)
+anova(m.accuracy, m.accuracy.nointer, m.accuracy.contextonly)
+
+# stargazer(m.accuracy.lexicalonly)
+
+data.norming.humsim.filtered$truewordfreqnorm <- data.norming.humsim.filtered$truewordfreq-min(data.norming.humsim.filtered$truewordfreq)
+
+m.accuracy.lexicalonly.truefreq <- glmer(responseaccuracy ~ lexical+truewordfreqnorm + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly.truefreqinter <- glmer(responseaccuracy ~ lexical*truewordfreqnorm + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+
+anova(m.accuracy.lexicalonly, m.accuracy.lexicalonly.truefreq, m.accuracy.lexicalonly.truefreqinter)
+
+stargazer(m.accuracy.lexicalonly.truefreq)
+
+items.coded <- read.csv("~/experiments/HumanSimulation/materials/learning/items_coded.csv")
+
+data.norming.humsim.filtered <- merge(data.norming.humsim.filtered, items.coded)
+
+m.accuracy.lexicalonly.comp <- glmer(responseaccuracy ~ lexical + complementizer + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly.comp <- glmer(responseaccuracy ~ lexical + main.subject + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly.comp <- glmer(responseaccuracy ~ lexical + embedded.subject + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly.comp <- glmer(responseaccuracy ~ lexical + embedded.tense + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly.comp <- glmer(responseaccuracy ~ lexical + main.object1 + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.accuracy.lexicalonly.comp <- glmer(responseaccuracy ~ lexical + main.object2 + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+
+
+## get unique pairs of true word and response
+true.response.counts <- data.norming.humsim.filtered %>%
+  group_by(lexical, verb, responselemma, item) %>%
+  summarise (n = n()) %>%
+  group_by(lexical, verb, item) %>%
+  mutate(freq = n/sum(n)) %>%
+  group_by(lexical, verb, responselemma) %>%
+  summarise(freqmean = mean(c(freq, rep(0, 40-n()))), 
+            freqlow = quantile(c(freq, rep(0, 40-n())),  0.0),
+            freqhigh = quantile(c(freq, rep(0, 40-n())),  1.0)) %>%
+  arrange(lexical, verb, -freqmean) %>%
+  group_by(lexical, verb) %>%
+  mutate(rank=row_number())
+
+# write.csv2(unique(true.response.counts[c('responselemma')]),
+#            file='/home/aaronsteven/experiments/HumanSimulation/analysis/norming/human_simulation/unique_responselemmas',
+#            row.names=FALSE,
+#            quote=FALSE)
+
+p.responses <- ggplot(true.response.counts, aes(x=-rank, y=freqmean, ymax=freqhigh, ymin=freqlow, label=responselemma, fill=lexical)) + geom_bar(stat="identity", position="dodge", color="black") + geom_errorbar(position=position_dodge(.9), width=.1) + geom_text(hjust=-.25,position=position_dodge(.9), aes(y=freqhigh), size=2) + scale_x_continuous(name='Rank of by-item median proportion', breaks=-10:-1, limits=c(-10.5,-.5), labels=10:1) + scale_y_continuous(name='Relative frequency', breaks=seq(0,1,.1), limits=c(0,1.15)) + scale_fill_grey(name='Lexical context') + coord_flip() + theme_bw() + geom_hline(yintercept=0) + theme(legend.justification=c(1,0), legend.position=c(1,0), legend.background=element_rect(color="black")) + facet_wrap(~verb, nrow=5)
+
+# tikz(file.path(plots.dir, 'humsimnormingresponses.tikz'), width=7, height=10)
+# p.responses
+# dev.off()
+
+plot.verb.responses <- function(v) {
+  verb.responses <- filter(true.response.counts, verb %in% v)
+  p <- ggplot(true.response.counts, aes(x=-rank, y=freqmean, ymax=freqhigh, ymin=freqlow, label=responselemma, fill=lexical)) + geom_bar(stat="identity", position="dodge", color="black") + geom_errorbar(position=position_dodge(.9), width=.1) + geom_text(hjust=-.25,position=position_dodge(.9), aes(y=freqhigh)) + scale_x_continuous(name='Rank of by-item mean accuracy', breaks=-10:-1, limits=c(-10.5,-.5), labels=10:1) + scale_y_continuous(name='Relative frequency', breaks=seq(0,1,.1), limits=c(0,1.15)) + scale_fill_grey(name='Lexical context') + coord_flip() + theme_bw() + geom_hline(yintercept=0) + theme(legend.justification=c(1,0), legend.position=c(1,0), legend.background=element_rect(color="black"))
+
+  if(length(v) > 1){
+    p <- p + facet_wrap(~verb)
+  }
+  
+  return(p)
+}
+
+##
+
+unique.responselemmas.filtered <- read.table("~/experiments/HumanSimulation/analysis/norming/human_simulation/unique_responselemmas", header=TRUE, quote="\"")
+verb.responses <- droplevels(unique.responselemmas.filtered[grep('[*]', unique.responselemmas.filtered$responselemma, invert=TRUE),])
+
+true.response.counts <- filter(true.response.counts, responselemma %in% verb.responses)
+
+# write.csv2(true.response.counts[c('verb', 'responselemma')],
+#            file='/home/aaronsteven/experiments/HumanSimulation/analysis/norming/human_simulation/unique_truelemma_responselemma_pairs',
+#            row.names=FALSE,
+#            quote=FALSE)
+
+# write.csv2(data.norming.humsim.filtered[c('id', 'item', 'verb', 'context', 'lexical', 'verbinflected', 'response', 'responselemma', 'responseaccuracy')],
+#            file='/home/aaronsteven/experiments/HumanSimulation/data/norming/human_simulation/results.filtered',
+#            row.names=FALSE,
+#            quote=FALSE)
+
+mean.error <- data.norming.humsim.filtered %>%
+  group_by(lexical, context, verb, item) %>%
+  summarise(meanerr=mean(!(responselemma %in% verb.responses)))
+
+mean.error$verb.ordered <- ordered(mean.error$verb, levels=mean.mean.accuracy[order(-mean.mean.accuracy$meanmeanacc),]$verb)
+
+p.error <- ggplot(mean.error, aes(x=verb.ordered, y=meanerr, fill=lexical)) + geom_boxplot() + scale_fill_grey(name='Lexical context', start = .3, end=.7) + facet_grid(context~.) + scale_x_discrete(name='') + scale_y_continuous(name='Proportion nonverb responses') + theme(legend.justification=c(1,0), legend.position=c(1,0.25), legend.background=element_rect(color="black"))
+
+# tikz(file.path(plots.dir, 'humsimnormingnonverb.tikz'), width=6, height=4)
+# p.error
+# dev.off()
+
+mean.acc.err <- merge(mean.accuracy, mean.error)
+cor(mean.acc.err$meanacc, mean.acc.err$meanerr, method="spearman")
+
+data.norming.humsim.filtered$nonverb <- !(data.norming.humsim.filtered$responselemma %in% verb.responses)
+
+m.syntax <- randomForest(as.factor(responseaccuracy) ~ verb + lexical + context + complementizer + main.subject + embedded.subject + main.object1 + main.object2 + embedded.tense + truewordfreq + main.prep, data=filter(data.norming.humsim.filtered, !nonverb))
+m.syntax <- ctree(as.factor(responseaccuracy) ~ verb + lexical + context + complementizer + main.subject + embedded.subject + main.object1 + main.object2 + embedded.tense + main.prep, data=data.norming.humsim.filtered)
+
+m.error <- glmer(nonverb ~ lexical*context + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.error.nointer <- glmer(nonverb ~ lexical+context + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.error.nocontext <- glmer(nonverb ~ lexical + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+m.error.nolexical <- glmer(nonverb ~ context + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+
+anova(m.error, m.error.nointer, m.error.nocontext)
+anova(m.error, m.error.nointer, m.error.nolexical)
+
+sentences.ordered <- read.table("~/experiments/HumanSimulation/materials/learning/sentences_ordered", quote="\"", sep='|')
+sentences.ordered$nword <- sapply(gregexpr("[[:alpha:]]+", sentences.ordered$V6), length)
+
+data.norming.humsim.filtered <- merge(data.norming.humsim.filtered, sentences.ordered[c('V1', 'nword')], by.x='item', by.y='V1')
+
+m.error.nointer.nword <- glmer(nonverb ~ lexical+context+nword + (1|id) + (1|verb) + (1|item), family="binomial", data=data.norming.humsim.filtered)
+
+anova(m.error.nointer, m.error.nointer.nword)
+```
+
+
+## Similariy analysis
