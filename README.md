@@ -18,7 +18,7 @@ This directory contains the raw data file pulled from Mechanical Turk. `results.
 
 ### analysis/
 
-This directory contains the analysis script for the manuscript found in `papers/` as well as a preprocessing script for use on the raw Ibex data.
+This directory contains the analysis script for the manuscript found in `papers/` as well as a preprocessing/download script for use on the raw Ibex data.
 
 ### papers/
 
